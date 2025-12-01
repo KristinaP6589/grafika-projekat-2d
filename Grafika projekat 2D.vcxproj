@@ -136,9 +136,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\v3\V3\Util.cpp" />
+    <ClCompile Include="Helpres.cpp" />
     <ClCompile Include="Main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Helpers.h" />
     <ClInclude Include="Util.h" />
   </ItemGroup>
   <ItemGroup>
