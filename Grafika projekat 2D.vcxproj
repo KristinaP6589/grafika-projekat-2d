@@ -132,6 +132,8 @@
     <None Include="basic.vert" />
     <None Include="color.frag" />
     <None Include="color.vert" />
+    <None Include="overlay.frag" />
+    <None Include="overlay.vert" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
@@ -145,8 +147,7 @@
     <ClInclude Include="Util.h" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="res\car.png" />
-    <Image Include="res\car4.png" />
+    <Image Include="res\overlay.png" />
     <Image Include="res\rails.png" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

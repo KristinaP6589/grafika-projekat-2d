@@ -7,9 +7,13 @@
 #include "Util.h"
 #include "Helpers.h"
 
+#include <thread>
+#include <chrono>
+
+
 // ================== Konstante ==================
-const int SCREEN_WIDTH = 800;
-const int SCREEN_HEIGHT = 800;
+int SCREEN_WIDTH = 800;
+int SCREEN_HEIGHT = 800;
 const int TRACK_SEGMENTS = 400;
 const int MAX_SEATS = 8;
 const float RAIL_HALF_SPACING = 0.025f;   // rastojanje izmedju sina
@@ -423,10 +427,23 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Rollercoaster", nullptr, nullptr);
+    // FULLSCREEN
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+    SCREEN_WIDTH = mode->width;
+    SCREEN_HEIGHT = mode->height;
+
+    GLFWwindow* window = glfwCreateWindow(
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        "Rollercoaster",
+        monitor,        // ← full screen na primarnom monitoru
+        nullptr
+    );
     if (!window) return endProgram("Prozor nije uspeo da se kreira.");
 
     glfwMakeContextCurrent(window);
+    glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     // GLEW
     if (glewInit() != GLEW_OK) return endProgram("GLEW init failed.");
@@ -435,6 +452,11 @@ int main()
     GLuint basicShader = createShader("basic.vert", "basic.frag");
     if (!basicShader) return endProgram("Neuspeh pri kreiranju sejdera.");
     glLineWidth(5.0f);   // sine deblje
+
+    glUseProgram(basicShader);
+    float aspect = (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT;   // npr. 1920 / 1080
+    GLint locAspect = glGetUniformLocation(basicShader, "uAspect");
+    glUniform1f(locAspect, aspect);
 
     // Kursor sine (ako postoji rails.png)
     GLFWcursor* railsCursor = loadImageToCursor("res/rails.png");
@@ -480,18 +502,78 @@ int main()
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
+
+    // ====== Overlay shader i tekstura ======
+    GLuint overlayShader = createShader("overlay.vert", "overlay.frag");
+    // ucitaj teksturu sa imenom, prezimenom, indeksom
+    GLuint overlayTex = loadImageToTexture("res/overlay.png");
+    if (overlayTex == 0)
+        std::cout << "GRESKA: overlay.png NIJE ucitan (overlayTex == 0)!\n";
+    else
+        std::cout << "overlay.png ucitan, id = " << overlayTex << "\n";
+    glBindTexture(GL_TEXTURE_2D, overlayTex);
+    // bez mipmapa – koristimo obican linear filter
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // da ne “povuce” smece van slike
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+
+    // VAO/VBO za overlay kvadrat u NDC (gornji levi ugao)
+    float overlayVerts[] = {
+        // x, y,      u, v
+        -0.95f,  0.95f,   0.0f, 1.0f,  // gore levo
+        -0.95f,  0.80f,   0.0f, 0.0f,  // dole levo
+        -0.60f,  0.80f,   1.0f, 0.0f,  // dole desno
+        -0.60f,  0.95f,   1.0f, 1.0f   // gore desno
+    };
+
+    GLuint vaoOverlay, vboOverlay;
+    glGenVertexArrays(1, &vaoOverlay);
+    glGenBuffers(1, &vboOverlay);
+
+    glBindVertexArray(vaoOverlay);
+    glBindBuffer(GL_ARRAY_BUFFER, vboOverlay);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(overlayVerts), overlayVerts, GL_STATIC_DRAW);
+
+    // pozicija
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // UV
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+
     // pocetna stanja
     fullReset();
-
     glClearColor(0.4f, 0.5f, 0.95f, 1.0f);
 
     double lastTime = glfwGetTime();    //  vreme za dt
+	const double TARGET_FRAME_TIME = 1.0 / 75.0;  // 75 FPS         //FRAME LIMITER
+
 
     while (!glfwWindowShouldClose(window))
     {
-        double now = glfwGetTime();        
-        double dt = now - lastTime;        
-        lastTime = now;                    
+		// FRAME LIMITER start
+        double frameStart = glfwGetTime();
+
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
+
+        double now = frameStart;
+        double dt = now - lastTime;
+        lastTime = now;
+
+        // ESC -> ugasi program
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }                   
 
         int spaceState = glfwGetKey(window, GLFW_KEY_SPACE);
         if (spaceState == GLFW_PRESS && !spaceWasPressed) {
@@ -639,14 +721,23 @@ int main()
                 float flatness = 1.0f - std::min(1.0f, steepness * 4);  // <~0.25 = ravno
                 const float FRICTION = 1.0f;
                 wagonSpeed += (TARGET_SPEED - wagonSpeed) * flatness * FRICTION * (float)dt;
-
+                
                 // ogranicenja
                 if (wagonSpeed < MIN_SPEED) wagonSpeed = MIN_SPEED;
                 if (wagonSpeed > MAX_SPEED) wagonSpeed = MAX_SPEED;
 
+                float oldT = wagonT;
+
                 // pomeri vagon po putanji
                 wagonT += wagonSpeed * (float)dt;
                 if (wagonT > 1.0f) wagonT -= 1.0f;
+
+                // ako smo presli sa kraja na pocetak (oldT ~0.99, wagonT ~0.02)
+                // smatramo da je tura gotova
+                if (oldT > wagonT) {
+                    finishReturnToStart();
+                }
+
                 break;
             }
             case RideState::STOPPING_SICK:
@@ -707,8 +798,30 @@ int main()
         drawTrack(basicShader, vaoTrack, vaoQuad);
         drawWagonAndPassengers(basicShader, vaoQuad);
 
+        // --- overlay sa imenom, prezimenom, indeksom ---
+        glDisable(GL_DEPTH_TEST);  // da overlay bude sigurno preko svega
+
+        glUseProgram(overlayShader);
+        glBindVertexArray(vaoOverlay);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, overlayTex);
+
+        // u overlay.frag je uniform sampler2D uTex
+        GLint locTex = glGetUniformLocation(overlayShader, "uTex");
+        glUniform1i(locTex, 0);
+
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
         glfwSwapBuffers(window);
         glfwPollEvents();
+
+        // Frame limiter
+        double frameEnd = glfwGetTime();
+        double frameTime = frameEnd - frameStart;
+        if (frameTime < TARGET_FRAME_TIME) {
+            double sleepTime = TARGET_FRAME_TIME - frameTime;
+            std::this_thread::sleep_for(std::chrono::duration<double>(sleepTime));
+        }
     }
 
     glfwTerminate();

@@ -26,6 +26,8 @@
       <Filter>Source Files</Filter>
     </None>
     <None Include="color.frag" />
+    <None Include="overlay.vert" />
+    <None Include="overlay.frag" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -53,10 +55,7 @@
     <Image Include="res\rails.png">
       <Filter>Resource Files</Filter>
     </Image>
-    <Image Include="res\car4.png">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\car.png">
+    <Image Include="res\overlay.png">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

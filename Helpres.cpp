@@ -44,6 +44,8 @@ void buildTrack(Vec2* trackPoints, int TRACK_SEGMENTS, const Vec2* ctrlPoints, i
         trackPoints[i] = catmullRom(t,
             ctrlPoints[i0], ctrlPoints[i1],
             ctrlPoints[i2], ctrlPoints[i3]);
+
+        trackPoints[i].x *= 0.7f;
     }
 
     trackPoints[TRACK_SEGMENTS - 1] = trackPoints[0];   //zatvaranje staze
